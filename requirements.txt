@@ -8,3 +8,4 @@ torch==1.13.1 --extra-index-url=https://download.pytorch.org/whl/cu116
 Pillow~=9.4.0
 cog~=0.6.1
 runpod~=0.8.4
+requests~=2.28.1
