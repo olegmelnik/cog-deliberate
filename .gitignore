@@ -131,4 +131,5 @@ dmypy.json
 .DS_Store
 
 .idea
+.cog
 diffusers-cache
