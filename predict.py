@@ -6,14 +6,11 @@ from diffusers import (
     PNDMScheduler,
     LMSDiscreteScheduler,
     DDIMScheduler,
-    StableDiffusionPipeline,
-    StableDiffusionImg2ImgPipeline,
-    StableDiffusionInpaintPipelineLegacy,
+    StableDiffusionPipeline
 )
-from PIL import Image
 from cog import BasePredictor, Input, Path
 
-
+MODEL_ID = "XpucT/Deliberate"
 MODEL_CACHE = "diffusers-cache"
 
 
@@ -23,27 +20,9 @@ class Predictor(BasePredictor):
         print("Loading pipeline...")
 
         self.txt2img_pipe = StableDiffusionPipeline.from_pretrained(
-            "XpucT/Deliberate",
+            MODEL_ID,
             cache_dir=MODEL_CACHE,
             local_files_only=True,
-        ).to("cuda")
-        self.img2img_pipe = StableDiffusionImg2ImgPipeline(
-            vae=self.txt2img_pipe.vae,
-            text_encoder=self.txt2img_pipe.text_encoder,
-            tokenizer=self.txt2img_pipe.tokenizer,
-            unet=self.txt2img_pipe.unet,
-            scheduler=self.txt2img_pipe.scheduler,
-            safety_checker=self.txt2img_pipe.safety_checker,
-            feature_extractor=self.txt2img_pipe.feature_extractor,
-        ).to("cuda")
-        self.inpaint_pipe = StableDiffusionInpaintPipelineLegacy(
-            vae=self.txt2img_pipe.vae,
-            text_encoder=self.txt2img_pipe.text_encoder,
-            tokenizer=self.txt2img_pipe.tokenizer,
-            unet=self.txt2img_pipe.unet,
-            scheduler=self.txt2img_pipe.scheduler,
-            safety_checker=self.txt2img_pipe.safety_checker,
-            feature_extractor=self.txt2img_pipe.feature_extractor,
         ).to("cuda")
 
     @torch.inference_mode()
@@ -53,7 +32,7 @@ class Predictor(BasePredictor):
         prompt: str = Input(description="Input prompt", default=""),
         negative_prompt: str = Input(
             description="Specify things to not see in the output",
-            default=None,
+            default="",
         ),
         width: int = Input(
             description="Width of output image. Maximum size is 1024x768 or 768x1024 because of memory limits",
@@ -64,14 +43,6 @@ class Predictor(BasePredictor):
             description="Height of output image. Maximum size is 1024x768 or 768x1024 because of memory limits",
             choices=[128, 256, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024],
             default=512,
-        ),
-        init_image: Path = Input(
-            description="Initial image to generate variations of. Will be resized to the specified width and height",
-            default=None,
-        ),
-        mask: Path = Input(
-            description="Black and white image to use as mask for inpainting over init_image. Black pixels are inpainted and white pixels are preserved. Tends to work better with prompt strength of 0.5-0.7. Consider using https://replicate.com/andreasjansson/stable-diffusion-inpainting instead.",
-            default=None,
         ),
         prompt_strength: float = Input(
             description="Prompt strength when using init image. 1.0 corresponds to full destruction of information in init image",
@@ -92,7 +63,7 @@ class Predictor(BasePredictor):
         scheduler: str = Input(
             default="K-LMS",
             choices=["DDIM", "K-LMS", "PNDM"],
-            description="Choose a scheduler. If you use an init image, PNDM will be used",
+            description="Choose a scheduler",
         ),
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
@@ -109,24 +80,8 @@ class Predictor(BasePredictor):
             )
 
         extra_kwargs = {}
-        if mask:
-            if not init_image:
-                raise ValueError("mask was provided without init_image")
-            pipe = self.inpaint_pipe
-            init_image = Image.open(init_image).convert("RGB")
-            extra_kwargs = {
-                "mask_image": Image.open(mask).convert("RGB").resize(init_image.size),
-                "init_image": init_image,
-                "strength": prompt_strength,
-            }
-        elif init_image:
-            pipe = self.img2img_pipe
-            extra_kwargs = {
-                "init_image": Image.open(init_image).convert("RGB"),
-                "strength": prompt_strength,
-            }
-        else:
-            pipe = self.txt2img_pipe
+
+        pipe = self.txt2img_pipe
 
         pipe.scheduler = make_scheduler(scheduler)
 
